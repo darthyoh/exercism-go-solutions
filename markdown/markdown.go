@@ -4,11 +4,22 @@ package markdown
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
 // Render translates markdown to HTML
 func Render(markdown string) string {
+	re := regexp.MustCompile(`^(#*)`)
+	headers := re.FindAllStringSubmatch(markdown, -1)[0][0]
+	if len(headers) == 0 {
+		fmt.Println("Must be a <p></p>")
+	} else {
+		fmt.Println("Must be a <h", len(headers), "></h", len(headers), ">")
+	}
+
+	fmt.Println(markdown)
+	fmt.Println(headers)
 	header := 0
 	markdown = strings.Replace(markdown, "__", "<strong>", 1)
 	markdown = strings.Replace(markdown, "__", "</strong>", 1)
