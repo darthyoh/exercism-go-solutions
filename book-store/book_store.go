@@ -1,130 +1,153 @@
 package bookstore
 
 import (
-	"sync"
+	"fmt"
+	"sort"
 )
 
-var groups map[int]int
-
-func init() {
-
-	groups = map[int]int{
-		5: 5 * 800 * 0.75,
-		4: 4 * 800 * 0.80,
-		3: 3 * 800 * 0.90,
-		2: 2 * 800 * 0.95,
-		1: 800,
-	}
+var PRICES = map[int]int{
+	1: 800,
+	2: 1520,
+	3: 2160,
+	4: 2560,
+	5: 3000,
 }
 
 func Cost(books []int) int {
-	min := 0
+	//get all possible combinaisons for books
+	combinaisons := getCombinaisons12345(len(books))
 
-	sums := getAllSolutions(books)
+	minCost := 0
+	//test if any combinaison is possible
+	for i := len(combinaisons) - 1; i >= 0; i-- {
 
-	for v := range sums {
-		if min == 0 || v < min {
-			min = v
+		if price, err := getPriceForCombinaison(books, combinaisons[i]); err == nil && (minCost == 0 || price < minCost) {
+			minCost = price
 		}
 	}
-	return min
+
+	return minCost
+
 }
 
-func getAllSolutions(books []int) chan int {
-	sums := make(chan int)
-	go func() {
-		defer close(sums)
-		//get a map of books
-		differentBooks := make(map[int]int)
+// simple Combinaison to sort a []int (in modern Go version, the slices package will do this instead)
+type Combinaison []int
 
-		for _, b := range books {
-			if _, ok := differentBooks[b]; !ok {
-				differentBooks[b] = 0
-			}
-			differentBooks[b]++
+func (a Combinaison) Len() int {
+	return len(a)
+}
+func (a Combinaison) Swap(i, j int) {
+	a[i], a[j] = a[j], a[i]
+}
+func (a Combinaison) Less(i, j int) bool {
+	return a[i] > a[j]
+}
+
+func (a Combinaison) Price() int {
+	sum := 0
+
+	for _, i := range a {
+		cost, ok := PRICES[i]
+		if ok {
+			sum += cost
 		}
+	}
+	return sum
+}
 
-		if len(differentBooks) < 2 {
-			//Case no book, or 1 only book or only same books
-			sums <- len(books) * 800
+// BookMap represents the number of each book
+type BookMap map[int]int
+
+func BookMapFromBooks(books []int) BookMap {
+	bookMap := map[int]int{}
+	for _, book := range books {
+		if bks, ok := bookMap[book]; !ok {
+			bookMap[book] = 1
 		} else {
-			//search for max grouping possibility (limited to 5)
-			maxGroup := len(differentBooks)
-			if maxGroup > 5 {
-				maxGroup = 5
-			}
+			bookMap[book] = bks + 1
+		}
+	}
+	return bookMap
+}
 
-			for group := maxGroup; group > 0; group-- {
-				//get keys of Map
-				keys := make([]int, 0)
-				for k := range differentBooks {
-					keys = append(keys, k)
-				}
+// RemoveGroup removes n books. It removes one entry of the most populated key
+func (b BookMap) RemoveGroup(n int) {
+	//sort keys in values desc
 
-				var wg sync.WaitGroup
-
-				//get all solutions for these keys
-				for _, possibility := range getPossiblesGroups(keys, group) {
-
-					wg.Add(1)
-
-					possibility := possibility
-
-					func() {
-						defer wg.Done()
-						//getting left books
-						restingBooks := make([]int, 0)
-						for i, v := range keys {
-							bookToRemove := 0
-							if possibility[i] {
-								bookToRemove = 1
-							}
-							for j := 0; j < differentBooks[v]-bookToRemove; j++ {
-								restingBooks = append(restingBooks, v)
-							}
-						}
-						for newSum := range getAllSolutions(restingBooks) {
-							sums <- groups[group] + newSum
-						}
-					}()
-				}
-				wg.Wait()
+	keys := make([]int, 0, len(b))
+	for k := range b {
+		keys = append(keys, k)
+	}
+	for i := 0; i < len(keys); i++ {
+		for j := 0; j < len(keys)-i-1; j++ {
+			if b[keys[j]] < b[keys[j+1]] {
+				keys[j], keys[j+1] = keys[j+1], keys[j]
 			}
 		}
-	}()
-	return sums
+	}
+
+	//delete one entry of each n first keys
+	for i := 0; i < n; i++ {
+		v := b[keys[i]]
+		if v-1 == 0 {
+			delete(b, keys[i])
+		} else {
+			b[keys[i]] = v - 1
+		}
+	}
 
 }
 
-func getPossiblesGroups(input []int, group int) [][]bool {
-	if len(input) == 0 || group > len(input) {
-		return [][]bool{}
-	}
-	if len(input) == group {
-		solution := make([]bool, 0)
-		for range input {
-			solution = append(solution, true)
+// getPriceForCombinaison return, if combinaison is applicable to the books, the price or an error if not possible
+func getPriceForCombinaison(books []int, combinaison []int) (int, error) {
+
+	//sort combinaison in desc
+	sort.Sort(Combinaison(combinaison))
+	//construction of a map of book
+	bookMap := BookMapFromBooks(books)
+
+	for _, nbBooks := range combinaison {
+		if len(bookMap) < nbBooks {
+			return 0, fmt.Errorf("not applicable")
 		}
-		return [][]bool{solution}
+		bookMap.RemoveGroup(nbBooks)
 	}
 
-	solutions := make([][]bool, 0)
+	return Combinaison(combinaison).Price(), nil
+}
 
-	if group == 1 {
-		for i := range input {
-			solution := make([]bool, len(input))
-			solution[i] = true
-			solutions = append(solutions, solution)
+// getCombinaisons12345 for a target returns all combinaison of differents books
+func getCombinaisons12345(target int) [][]int {
+
+	totalCombinaisons := make([][][]int, target+1)
+
+	totalCombinaisons[0] = [][]int{{}}
+
+	for intermediateTarget := 1; intermediateTarget < target+1; intermediateTarget++ {
+
+		for nbBooks := 1; nbBooks < 6; nbBooks++ {
+
+			if intermediateTarget-nbBooks >= 0 && totalCombinaisons[intermediateTarget-nbBooks] != nil {
+
+				if totalCombinaisons[intermediateTarget] == nil {
+					totalCombinaisons[intermediateTarget] = make([][]int, 0)
+				}
+
+				if len(totalCombinaisons[intermediateTarget-nbBooks]) == 0 {
+					totalCombinaisons[intermediateTarget] = [][]int{{nbBooks}}
+				} else {
+					for _, intermediateTargetCombinaison := range totalCombinaisons[intermediateTarget-nbBooks] {
+						newCombinaison := append([]int{}, intermediateTargetCombinaison...)
+						newCombinaison = append(newCombinaison, nbBooks)
+
+						totalCombinaisons[intermediateTarget] = append(totalCombinaisons[intermediateTarget], newCombinaison)
+					}
+				}
+
+			}
 		}
-		return solutions
 	}
-	for i := 0; i < len(input)-group+1; i++ {
-		solution := make([]bool, i+1)
-		solution[i] = true
-		subsolutions := getPossiblesGroups(input[i+1:], group-1)
-		for _, v := range subsolutions {
-			solutions = append(solutions, append(solution, v...))
-		}
-	}
-	return solutions
+
+	return totalCombinaisons[target]
+
 }
