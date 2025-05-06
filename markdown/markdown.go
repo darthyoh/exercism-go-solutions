@@ -10,17 +10,60 @@ import (
 
 // Render translates markdown to HTML
 func Render(markdown string) string {
-	re := regexp.MustCompile(`^(#*)`)
-	headers := re.FindAllStringSubmatch(markdown, -1)[0][0]
-	if len(headers) == 0 {
-		fmt.Println("Must be a <p></p>")
-	} else {
-		fmt.Println("Must be a <h", len(headers), "></h", len(headers), ">")
+
+	//1 : init some regex
+	reStrong := regexp.MustCompile(`(.*)__(.+)__(.*)`)
+	reItalic := regexp.MustCompile(`(.*)_(.+)_(.*)`)
+	reParagraph := regexp.MustCompile(`^[^*#]`)
+	reHeader := regexp.MustCompile(`^(#+) (.+)`)
+	reList := regexp.MustCompile(`^\* (.+)`)
+	reUl := regexp.MustCompile(`(.*?)(<li>.+</li>)(.*)`)
+	//2 : split markdown in lines
+	lines := strings.Split(markdown, "\n")
+
+	//3 : iterate over lines
+	for i := 0; i < len(lines); i++ {
+		//check strong
+		if groups := reStrong.FindStringSubmatch(lines[i]); len(groups) == 4 {
+			lines[i] = fmt.Sprintf("%s<strong>%s</strong>%s", groups[1], groups[2], groups[3])
+		}
+		//check italic
+		if groups := reItalic.FindStringSubmatch(lines[i]); len(groups) == 4 {
+			lines[i] = fmt.Sprintf("%s<em>%s</em>%s", groups[1], groups[2], groups[3])
+		}
+
+		//check paragraph
+		if reParagraph.MatchString(lines[i]) {
+			lines[i] = fmt.Sprintf("<p>%s</p>", lines[i])
+		}
+
+		//check headers
+		if groups := reHeader.FindStringSubmatch(lines[i]); len(groups) == 3 {
+			if len(groups[1]) <= 6 {
+				lines[i] = fmt.Sprintf("<h%[1]d>%s</h%[1]d>", len(groups[1]), groups[2])
+			} else {
+				lines[i] = fmt.Sprintf("<p>%s</p>", lines[i])
+			}
+
+		}
+
+		//check list
+		if groups := reList.FindStringSubmatch(lines[i]); len(groups) == 2 {
+			lines[i] = fmt.Sprintf("<li>%s</li>", groups[1])
+		}
 	}
 
-	fmt.Println(markdown)
-	fmt.Println(headers)
-	header := 0
+	//4 : join lines
+	markdown = strings.Join(lines, "")
+
+	//5 : find <ul></ul> on global markdown
+	if groups := reUl.FindStringSubmatch(markdown); len(groups) == 4 {
+		markdown = fmt.Sprintf("%s<ul>%s</ul>%s", groups[1], groups[2], groups[3])
+	}
+
+	return markdown
+
+	/*header := 0
 	markdown = strings.Replace(markdown, "__", "<strong>", 1)
 	markdown = strings.Replace(markdown, "__", "</strong>", 1)
 	markdown = strings.Replace(markdown, "_", "<em>", 1)
@@ -72,6 +115,6 @@ func Render(markdown string) string {
 	if list > 0 {
 		return html + "</li></ul>"
 	}
-	return "<p>" + html + "</p>"
+	return "<p>" + html + "</p>"*/
 
 }
